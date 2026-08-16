@@ -1,0 +1,3 @@
+e166d1ce31a19955bd2470163b012c2a6abb531a2eb2a709053ed250ff6ec986  custom_components/meoof/runtime/open/meoof-open-runtime-linux-amd64
+57bbd2f3542fa076694fb65a441f6d27f6b325172eff4693e8fef1eebdc2a01a  custom_components/meoof/runtime/open/meoof-open-runtime-linux-arm
+54b40a9b7e211272f956179e89a023683ef6931d9ae9eb1bd004f8cdd63d5236  custom_components/meoof/runtime/open/meoof-open-runtime-linux-arm64

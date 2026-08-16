@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.log
+.DS_Store
+.idea/
+.vscode/
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+native/.build/
+
+# Home Assistant runtime and private user data
+.storage/
+secrets.yaml
+meoof-device-secrets.json
+.meoof-cats/
+.meoof-smart-feed/
+www/meoof-playback/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.mp4
+*.apk
+
+# Public, reviewed documentation assets
+!docs/images/*.png

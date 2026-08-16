@@ -1,0 +1,83 @@
+{
+  "title": "Meoof Pet Feeder",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Sign in to Meoof",
+        "description": "Enter the phone number used by the Meoof app. A verification code will be sent after you submit.",
+        "data": {"userid": "Phone number"}
+      },
+      "code": {
+        "title": "Enter verification code",
+        "description": "Enter the SMS verification code you just received.",
+        "data": {"code": "Verification code"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect or send a verification code",
+      "invalid_auth": "The verification code is invalid or sign-in failed",
+      "no_devices": "No devices were found for this account"
+    },
+    "abort": {"already_configured": "This account is already configured"}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "cat_profile": "Add cat profile photo",
+          "delete_cat_profile": "Delete cat profile",
+          "recognition": "Cat recognition API",
+          "smart_feed": "Smart feed suppression",
+          "reauth": "Reauthenticate feed history"
+        }
+      },
+      "cat_profile": {
+        "title": "Add cat profile photo",
+        "description": "Enter a cat name and upload a photo. Add several photos under the same name to improve recognition.",
+        "data": {"name": "Cat name", "image": "Reference photo"}
+      },
+      "delete_cat_profile": {
+        "title": "Delete cat profile",
+        "data": {"name": "Cat"}
+      },
+      "recognition": {
+        "title": "External cat recognition",
+        "description": "Snapshots are uploaded only after feeding activity is detected and recognition is enabled. The endpoint must support the OpenAI chat/completions vision format.",
+        "data": {
+          "recognition_enabled": "Enable external recognition",
+          "recognition_url": "API base URL",
+          "recognition_api_key": "API key",
+          "recognition_model": "Vision model",
+          "recognition_prompt": "Custom recognition prompt"
+        }
+      },
+      "smart_feed": {
+        "title": "Smart feed suppression",
+        "description": "Before scheduled feeding, read today's plan and capture a fresh camera frame. Only cancel this one occurrence when the model reports a high food level above the confidence threshold. Camera, model or verification failures allow feeding to continue. A working vision API is required.",
+        "data": {
+          "smart_feed_enabled": "Enable smart suppression",
+          "smart_feed_lead_minutes": "Check this many minutes early",
+          "smart_feed_confidence": "Minimum confidence to cancel (0.5–1.0)",
+          "smart_feed_notify_service": "Optional notification service (for example notify.mobile_app_phone)",
+          "smart_feed_prompt": "Optional food-level prompt"
+        }
+      },
+      "reauth": {
+        "title": "Reauthenticate",
+        "description": "Enter the phone number, submit it, and then enter the SMS verification code.",
+        "data": {"userid": "Phone number"}
+      },
+      "code": {
+        "title": "Enter verification code",
+        "data": {"code": "Verification code"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect or send a verification code",
+      "invalid_auth": "The verification code is invalid or sign-in failed",
+      "no_devices": "No devices were found for this account",
+      "invalid_image": "This image could not be processed"
+    },
+    "abort": {"no_cat_profiles": "No cat profiles exist yet"}
+  }
+}

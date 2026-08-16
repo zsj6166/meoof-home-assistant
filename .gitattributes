@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.so binary
+qemu-aarch64 binary
+meoof_probe binary
+

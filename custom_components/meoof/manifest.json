@@ -1,0 +1,12 @@
+{
+  "domain": "meoof",
+  "name": "Meoof Pet Feeder",
+  "codeowners": ["@zsj6166"],
+  "config_flow": true,
+  "documentation": "https://github.com/zsj6166/meoof-home-assistant",
+  "issue_tracker": "https://github.com/zsj6166/meoof-home-assistant/issues",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "requirements": ["pycryptodome==3.23.0"],
+  "version": "1.0.0-rc.1"
+}

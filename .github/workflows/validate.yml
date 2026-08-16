@@ -1,0 +1,74 @@
+name: Validate
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  hacs:
+    name: HACS
+    runs-on: ubuntu-latest
+    steps:
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+
+  hassfest:
+    name: Hassfest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: home-assistant/actions/hassfest@master
+
+  source:
+    name: Source checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Compile Python
+        run: python -m compileall -q custom_components/meoof
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Validate JSON
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          for path in Path(".").rglob("*.json"):
+              if ".git" not in path.parts:
+                  json.loads(path.read_text(encoding="utf-8"))
+                  print(path)
+          PY
+      - name: Check Lovelace JavaScript
+        run: node --check custom_components/meoof/frontend/meoof-card.js
+      - name: Test open device runtime
+        working-directory: native/open_tutk_probe
+        run: |
+          go test ./...
+          go test github.com/AlexxIT/go2rtc/pkg/tutk
+      - name: Rebuild and compare runtime binaries
+        working-directory: native/open_tutk_probe
+        run: |
+          export CGO_ENABLED=0 GOOS=linux
+          GOARCH=amd64 go build -trimpath -ldflags='-s -w' -o /tmp/meoof-amd64 .
+          GOARCH=arm64 go build -trimpath -ldflags='-s -w' -o /tmp/meoof-arm64 .
+          GOARCH=arm GOARM=7 go build -trimpath -ldflags='-s -w' -o /tmp/meoof-arm .
+          cmp /tmp/meoof-amd64 ../../custom_components/meoof/runtime/open/meoof-open-runtime-linux-amd64
+          cmp /tmp/meoof-arm64 ../../custom_components/meoof/runtime/open/meoof-open-runtime-linux-arm64
+          cmp /tmp/meoof-arm ../../custom_components/meoof/runtime/open/meoof-open-runtime-linux-arm

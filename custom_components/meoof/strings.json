@@ -1,0 +1,83 @@
+{
+  "title": "觅凹自动喂食器",
+  "config": {
+    "step": {
+      "user": {
+        "title": "登录觅凹账号",
+        "description": "请输入觅凹 App 使用的手机号。提交后会发送短信验证码。",
+        "data": {"userid": "手机号"}
+      },
+      "code": {
+        "title": "输入验证码",
+        "description": "请输入刚刚收到的短信验证码。",
+        "data": {"code": "验证码"}
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接服务或发送验证码失败",
+      "invalid_auth": "验证码无效或登录失败",
+      "no_devices": "账号下没有找到设备"
+    },
+    "abort": {"already_configured": "该账号已经配置"}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "menu_options": {
+          "cat_profile": "添加猫咪档案照片",
+          "delete_cat_profile": "删除猫咪档案",
+          "recognition": "猫咪识别 API",
+          "smart_feed": "智能抑制出粮",
+          "reauth": "重新认证喂食记录"
+        }
+      },
+      "cat_profile": {
+        "title": "添加猫咪档案照片",
+        "description": "输入猫名并上传已有照片；同一猫名可重复上传多张，以提高识别率。",
+        "data": {"name": "猫咪名称", "image": "参考照片"}
+      },
+      "delete_cat_profile": {
+        "title": "删除猫咪档案",
+        "data": {"name": "选择猫咪"}
+      },
+      "recognition": {
+        "title": "外部猫咪识别",
+        "description": "仅在检测到进食且开关启用时上传截图。接口需兼容 OpenAI chat/completions 视觉格式。",
+        "data": {
+          "recognition_enabled": "启用外部识别",
+          "recognition_url": "API 基础地址",
+          "recognition_api_key": "API 密钥",
+          "recognition_model": "视觉模型名称",
+          "recognition_prompt": "自定义识别提示词"
+        }
+      },
+      "smart_feed": {
+        "title": "智能抑制出粮",
+        "description": "每次计划出粮前读取今日计划并拍摄一张实时画面。仅当视觉模型明确判断碗中余粮较多且达到置信度阈值时，才取消当天这一条任务；相机、模型或设备确认失败时仍允许正常出粮。需要先配置可用的视觉 API。",
+        "data": {
+          "smart_feed_enabled": "启用智能抑制",
+          "smart_feed_lead_minutes": "提前检查分钟数",
+          "smart_feed_confidence": "取消所需最低置信度（0.5–1.0）",
+          "smart_feed_notify_service": "可选通知服务（例如 notify.mobile_app_phone）",
+          "smart_feed_prompt": "可选余粮判断提示词"
+        }
+      },
+      "reauth": {
+        "title": "重新认证",
+        "description": "输入手机号并提交，然后在下一步填写短信验证码。",
+        "data": {"userid": "手机号"}
+      },
+      "code": {
+        "title": "输入验证码",
+        "data": {"code": "验证码"}
+      }
+    },
+    "error": {
+      "cannot_connect": "无法连接服务或发送验证码失败",
+      "invalid_auth": "验证码无效或登录失败",
+      "no_devices": "账号下没有找到设备",
+      "invalid_image": "无法处理这张图片"
+    },
+    "abort": {"no_cat_profiles": "还没有猫咪档案"}
+  }
+}
