@@ -13,7 +13,7 @@
 - [x] Select the final GitHub owner and repository name.
 - [x] Update `manifest.json` documentation, issue tracker and code owner.
 - [x] Enable Issues and add `home-assistant`, `hacs`, `meoof`, `pet-feeder` topics.
-- [ ] Create a GitHub Release for the final tag.
+- [x] Create a GitHub Release for the final tag.
 
 ## Validation
 
