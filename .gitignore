@@ -26,3 +26,5 @@ www/meoof-playback/
 
 # Public, reviewed documentation assets
 !docs/images/*.png
+!custom_components/meoof/brand/
+!custom_components/meoof/brand/*.png

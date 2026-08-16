@@ -3,6 +3,7 @@
   "name": "Meoof Pet Feeder",
   "codeowners": ["@zsj6166"],
   "config_flow": true,
+  "dependencies": ["file_upload", "http"],
   "documentation": "https://github.com/zsj6166/meoof-home-assistant",
   "issue_tracker": "https://github.com/zsj6166/meoof-home-assistant/issues",
   "integration_type": "device",

@@ -12,7 +12,7 @@
 
 - [x] Select the final GitHub owner and repository name.
 - [x] Update `manifest.json` documentation, issue tracker and code owner.
-- [ ] Enable Issues and add `home-assistant`, `hacs`, `meoof`, `pet-feeder` topics.
+- [x] Enable Issues and add `home-assistant`, `hacs`, `meoof`, `pet-feeder` topics.
 - [ ] Create a GitHub Release for the final tag.
 
 ## Validation
@@ -24,7 +24,7 @@
 - [ ] The exact release artifact installs into a clean HA instance.
 - [ ] Setup, reauthentication, unload/reload and uninstall are verified.
 - [x] Camera, event subscription, safe food-level test and playback download pass.
-- [ ] No automated or release test performs manual feeding.
+- [x] No automated or release test performs manual feeding.
 
 ## Artifact
 
