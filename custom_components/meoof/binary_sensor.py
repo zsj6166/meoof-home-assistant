@@ -1,4 +1,5 @@
 from homeassistant.components.binary_sensor import BinarySensorEntity, BinarySensorDeviceClass
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .entity import MeoofEntity
@@ -6,11 +7,16 @@ from .entity import MeoofEntity
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
+    registry = er.async_get(hass)
+    obsolete = registry.async_get_entity_id(
+        "binary_sensor", DOMAIN, entry.entry_id + "-right_bin_food"
+    )
+    if obsolete:
+        registry.async_remove(obsolete)
     async_add_entities([
         MeoofOnline(coordinator, entry),
         MeoofStatusBinary(coordinator, entry, "powered", "供电状态", "mdi:power-plug"),
-        MeoofStatusBinary(coordinator, entry, "left_bin_food", "左粮仓有粮", "mdi:bowl-mix"),
-        MeoofStatusBinary(coordinator, entry, "right_bin_food", "右粮仓有粮", "mdi:bowl-mix"),
+        MeoofStatusBinary(coordinator, entry, "left_bin_food", "粮仓有粮", "mdi:bowl-mix"),
         MeoofStatusBinary(coordinator, entry, "food_blocked", "出粮堵塞", "mdi:alert-circle"),
         MeoofStatusBinary(coordinator, entry, "child_lock", "童锁", "mdi:lock"),
         MeoofStatusBinary(coordinator, entry, "voice_enabled", "设备声音", "mdi:volume-high"),
