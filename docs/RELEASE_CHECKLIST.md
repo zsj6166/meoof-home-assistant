@@ -20,7 +20,7 @@
 - [x] Python compilation and unit tests pass.
 - [x] Go root and vendored transport tests pass.
 - [x] Every JSON file parses and `meoof-card.js` passes `node --check`.
-- [ ] Hassfest and HACS validation pass.
+- [x] Hassfest and HACS validation pass.
 - [ ] The exact release artifact installs into a clean HA instance.
 - [ ] Setup, reauthentication, unload/reload and uninstall are verified.
 - [x] Camera, event subscription, safe food-level test and playback download pass.
