@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import collections
 import json
 import os
 import pathlib
@@ -22,6 +23,16 @@ _LOGGER = logging.getLogger(__name__)
 
 
 FIELDS = re.compile(r"^([a-z_]+)=(.*)$")
+
+
+class SmartFeedCheckError(RuntimeError):
+    """A user-safe smart-feed failure with a machine-readable stage."""
+
+    def __init__(self, stage, user_message, detail="", error_name=None):
+        super().__init__(user_message)
+        self.stage = stage
+        self.detail = detail or user_message
+        self.error_name = error_name or type(self).__name__
 
 
 class MeoofRuntimeClient:
@@ -52,6 +63,11 @@ class MeoofRuntimeClient:
         self._camera_condition = asyncio.Condition()
         self._camera_users = 0
         self._camera_idle_task = None
+        self._camera_stderr = {
+            "runtime": collections.deque(maxlen=20),
+            "ffmpeg": collections.deque(maxlen=20),
+        }
+        self._camera_stderr_tasks = []
         self._history = None
         self._history_expires = 0.0
         self._foraging = None
@@ -455,6 +471,151 @@ class MeoofRuntimeClient:
         confidence = max(0.0, min(1.0, float(parsed.get("confidence", 0))))
         return level, confidence, str(parsed.get("reason", ""))
 
+    def _camera_failure_detail(self, timeout):
+        details = []
+        for source in ("runtime", "ffmpeg"):
+            lines = list(self._camera_stderr[source])[-3:]
+            if lines:
+                details.append(f"{source}: {' | '.join(lines)}")
+        return ("; ".join(details)[:1200] if details else
+                f"camera pipeline produced no JPEG frame within {timeout} seconds")
+
+    async def _capture_smart_feed_frame(self, timeout=25):
+        """Capture a fresh frame, rebuilding a stalled camera pipeline once."""
+        for attempt in (1, 2):
+            acquired = False
+            try:
+                await self.acquire_camera()
+                acquired = True
+                previous = self._camera_sequence
+                frame, _ = await self._wait_smart_feed_camera_frame(
+                    previous, timeout)
+                if not frame:
+                    raise SmartFeedCheckError(
+                        "camera_frame", "摄像头没有返回画面",
+                        self._camera_failure_detail(timeout), "CameraFrameError")
+                return frame, attempt
+            except asyncio.TimeoutError as exc:
+                detail = self._camera_failure_detail(timeout)
+                if attempt == 2:
+                    raise SmartFeedCheckError(
+                        "camera_frame_timeout",
+                        f"摄像头连续两次未在 {timeout} 秒内返回画面",
+                        detail, "TimeoutError") from exc
+                _LOGGER.warning(
+                    "Smart-feed camera frame timed out; rebuilding the camera pipeline: %s",
+                    detail)
+            except SmartFeedCheckError:
+                raise
+            except (OSError, RuntimeError) as exc:
+                detail = str(exc).strip() or type(exc).__name__
+                if attempt == 2:
+                    raise SmartFeedCheckError(
+                        "camera_start", "摄像头视频会话启动失败",
+                        detail[:1200], type(exc).__name__) from exc
+                _LOGGER.warning(
+                    "Smart-feed camera start failed; rebuilding the camera pipeline: %s",
+                    detail[:1200])
+            finally:
+                if acquired:
+                    await self.release_camera()
+            if self._camera_users == 0:
+                await self.stop_camera()
+            await asyncio.sleep(1)
+
+        raise SmartFeedCheckError("camera", "摄像头取帧失败")
+
+    async def _wait_smart_feed_camera_frame(self, sequence, timeout):
+        """Get a frame, flushing Egg Roll's short idle-camera burst if needed."""
+        # The sleeping feeder can take roughly 15 seconds to deliver the IDR.
+        burst_timeout = min(timeout, 20)
+        try:
+            return await self.wait_camera_frame(sequence, timeout=burst_timeout)
+        except asyncio.TimeoutError:
+            if not await self._finish_camera_writer():
+                raise
+        remaining = max(2, timeout - burst_timeout)
+        async with self._camera_condition:
+            if self._camera_sequence == sequence or self._camera_frame is None:
+                await asyncio.wait_for(
+                    self._camera_condition.wait(), min(remaining, 5))
+            return self._camera_frame, self._camera_sequence
+
+    async def _finish_camera_writer(self):
+        """Close only the H.264 writer so FFmpeg flushes its buffered IDR."""
+        process = self._camera_process
+        if not process or process.returncode is not None:
+            return False
+        process.terminate()
+        try:
+            await asyncio.wait_for(process.wait(), 3)
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+        self._camera_process = None
+        return True
+
+    async def _latest_recorded_smart_feed_frame(self):
+        """Use the latest foraging cover when the sleeping live encoder stalls."""
+        records = (self._foraging or {}).get("records", [])
+        candidates = [record for record in records if int(record.get("evt", 0) or 0)]
+        if not candidates:
+            raise RuntimeError("no foraging recording is available")
+        record = max(candidates, key=lambda item: int(item.get("evt", 0)))
+        event_time = datetime.fromtimestamp(int(record["evt"])).astimezone()
+        age_minutes = max(0, (datetime.now().astimezone() - event_time).total_seconds() / 60)
+        if age_minutes > 24 * 60:
+            raise RuntimeError("latest foraging recording is older than 24 hours")
+        cover, _ = await self._recording_for_event(record)
+        return cover, round(age_minutes, 1)
+
+    async def _analyze_smart_feed_frame(self, frame):
+        try:
+            return await asyncio.to_thread(self._recognize_food_level, frame)
+        except TimeoutError as exc:
+            raise SmartFeedCheckError(
+                "vision_timeout", "视觉模型在 60 秒内没有响应",
+                str(exc).strip() or "vision API request timed out",
+                "TimeoutError") from exc
+
+    async def _smart_feed_observation(self, record):
+        """Capture and analyze a useful bowl image with a recorded-event fallback."""
+        record["stage"] = "camera"
+        try:
+            frame, attempts = await self._capture_smart_feed_frame()
+            record.update(camera_attempts=attempts, frame_source="live_camera")
+        except SmartFeedCheckError as live_error:
+            await self.stop_camera()
+            try:
+                frame, age = await self._latest_recorded_smart_feed_frame()
+            except Exception:
+                raise live_error
+            record.update(camera_attempts=2,
+                          frame_source="latest_foraging_recording",
+                          frame_age_minutes=age,
+                          live_camera_error=live_error.error_name)
+
+        record["stage"] = "vision"
+        level, confidence, reason = await self._analyze_smart_feed_frame(frame)
+        if record["frame_source"] == "live_camera" and confidence < 0.5:
+            # A concealed Egg Roll IDR is often a flat grey image. The model's
+            # low confidence is a safer quality signal than trusting its label.
+            try:
+                live_confidence = confidence
+                await self.stop_camera()
+                fallback, age = await self._latest_recorded_smart_feed_frame()
+                fallback_result = await self._analyze_smart_feed_frame(fallback)
+                if fallback_result[1] > confidence:
+                    frame = fallback
+                    level, confidence, reason = fallback_result
+                    record.update(frame_source="latest_foraging_recording",
+                                  frame_age_minutes=age,
+                                  live_camera_confidence=live_confidence)
+            except Exception as exc:
+                _LOGGER.debug("Recorded smart-feed fallback unavailable: %s",
+                              type(exc).__name__)
+        return frame, level, confidence, reason
+
     async def start_smart_feed_monitor(self):
         await asyncio.to_thread(self._load_smart_feed_state)
         if self._event_callback:
@@ -513,18 +674,12 @@ class MeoofRuntimeClient:
             "left": item["left"], "right": item["right"], "status": "checking",
         }
         try:
-            await self.acquire_camera()
-            previous = self._camera_sequence
-            frame, _ = await self.wait_camera_frame(previous, timeout=15)
-            if not frame:
-                raise RuntimeError("camera returned no image")
+            frame, level, confidence, reason = await self._smart_feed_observation(record)
             self._smart_feed_snapshot_dir.mkdir(parents=True, exist_ok=True)
             snapshot = self._smart_feed_snapshot_dir / f"{key}.jpg"
             await asyncio.to_thread(snapshot.write_bytes, frame)
             record["snapshot_file"] = snapshot.name
             record["snapshot"] = self.cat_profiles.smart_feed_snapshot_url(snapshot.name)
-            level, confidence, reason = await asyncio.to_thread(
-                self._recognize_food_level, frame)
             record.update(food_level=level, confidence=confidence, reason=reason)
             threshold = max(0.5, min(1.0, float(
                 self.entry.options.get("smart_feed_confidence", 0.8))))
@@ -534,14 +689,20 @@ class MeoofRuntimeClient:
                 await self._notify_suppression(record)
             else:
                 record["status"] = "allowed"
+            record["stage"] = "complete"
             self._smart_feed_state["processed"][key] = record["status"]
         except Exception as exc:
             # Fail open: an unavailable camera/model must never silently starve a pet.
-            record.update(status="error_allowed", error=type(exc).__name__)
-            _LOGGER.warning("Feed %s was allowed because precheck failed: %s",
-                            key, type(exc).__name__)
+            error_name = getattr(exc, "error_name", type(exc).__name__)
+            error_stage = getattr(exc, "stage", record.get("stage", "precheck"))
+            error_detail = getattr(exc, "detail", str(exc).strip()) or error_name
+            record.update(status="error_allowed", error=error_name,
+                          error_stage=error_stage,
+                          error_detail=str(error_detail)[:1200])
+            _LOGGER.warning(
+                "Feed %s was allowed because precheck failed at %s: %s (%s)",
+                key, error_stage, error_name, str(error_detail)[:1200])
         finally:
-            await self.release_camera()
             records = self._smart_feed_state.setdefault("records", [])
             records.append(record)
             self._smart_feed_state["records"] = records[-200:]
@@ -575,25 +736,23 @@ class MeoofRuntimeClient:
         record = {"key": key, "checked_at": checked_at.isoformat(),
                   "status": "test_checking", "test_only": True}
         try:
-            await self.acquire_camera()
-            previous = self._camera_sequence
-            frame, _ = await self.wait_camera_frame(previous, timeout=15)
-            if not frame:
-                raise RuntimeError("camera returned no image")
+            frame, level, confidence, reason = await self._smart_feed_observation(record)
             self._smart_feed_snapshot_dir.mkdir(parents=True, exist_ok=True)
             snapshot = self._smart_feed_snapshot_dir / f"{key}.jpg"
             await asyncio.to_thread(snapshot.write_bytes, frame)
             record["snapshot_file"] = snapshot.name
             record["snapshot"] = self.cat_profiles.smart_feed_snapshot_url(snapshot.name)
-            level, confidence, reason = await asyncio.to_thread(
-                self._recognize_food_level, frame)
             record.update(status="test_only", food_level=level,
-                          confidence=confidence, reason=reason)
+                          confidence=confidence, reason=reason, stage="complete")
         except Exception as exc:
-            record.update(status="test_error", error=type(exc).__name__)
+            error_name = getattr(exc, "error_name", type(exc).__name__)
+            error_stage = getattr(exc, "stage", record.get("stage", "precheck"))
+            error_detail = getattr(exc, "detail", str(exc).strip()) or error_name
+            record.update(status="test_error", error=error_name,
+                          error_stage=error_stage,
+                          error_detail=str(error_detail)[:1200])
             raise
         finally:
-            await self.release_camera()
             records = self._smart_feed_state.setdefault("records", [])
             records.append(record)
             self._smart_feed_state["records"] = records[-200:]
@@ -892,7 +1051,11 @@ class MeoofRuntimeClient:
         if self._camera_idle_task:
             self._camera_idle_task.cancel()
             self._camera_idle_task = None
-        await self.start_camera()
+        try:
+            await self.start_camera()
+        except Exception:
+            self._camera_users = max(0, self._camera_users - 1)
+            raise
 
     async def release_camera(self):
         self._camera_users = max(0, self._camera_users - 1)
@@ -919,6 +1082,8 @@ class MeoofRuntimeClient:
             await self._stop_camera_unlocked()
             self._camera_active = True
             try:
+                for lines in self._camera_stderr.values():
+                    lines.clear()
                 await self._pause_event_monitor_for_camera()
                 work = pathlib.Path(self.hass.config.path(".meoof-camera"))
                 await asyncio.to_thread(work.mkdir, mode=0o700, exist_ok=True)
@@ -927,10 +1092,8 @@ class MeoofRuntimeClient:
                     await asyncio.to_thread(fifo.unlink)
                 await asyncio.to_thread(os.mkfifo, fifo, 0o600)
                 self._ffmpeg_process = await asyncio.create_subprocess_exec(
-                    "ffmpeg", "-loglevel", "error", "-fflags", "nobuffer",
-                    "-flags", "low_delay", "-f", "h264", "-i", str(fifo),
-                    "-vf", "fps=5", "-f", "image2pipe", "-vcodec", "mjpeg",
-                    "-q:v", "4", "pipe:1", stdout=asyncio.subprocess.PIPE,
+                    *self._camera_ffmpeg_command(fifo),
+                    stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE)
                 device = await asyncio.to_thread(self._device)
                 self._camera_process = await asyncio.create_subprocess_exec(
@@ -939,9 +1102,40 @@ class MeoofRuntimeClient:
                     stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
                 self._camera_reader_task = asyncio.create_task(
                     self._read_camera_frames())
+                self._camera_stderr_tasks = [
+                    asyncio.create_task(self._read_camera_stderr(
+                        self._camera_process, "runtime")),
+                    asyncio.create_task(self._read_camera_stderr(
+                        self._ffmpeg_process, "ffmpeg")),
+                ]
             except Exception:
                 await self._stop_camera_unlocked()
                 raise
+
+    @staticmethod
+    def _camera_ffmpeg_command(fifo):
+        # Egg Roll may end its first IDR one or two macroblocks early. FFmpeg
+        # can conceal that damage, but nobuffer and an input fps filter discard
+        # the only initial frame carrying SPS/PPS. Limit the output rate instead
+        # and explicitly allow the recoverable frame to reach the JPEG encoder.
+        return [
+            "ffmpeg", "-loglevel", "error", "-err_detect", "ignore_err",
+            "-flags", "+low_delay+output_corrupt", "-f", "h264", "-i",
+            str(fifo), "-r", "5", "-f", "image2pipe", "-vcodec", "mjpeg",
+            "-pix_fmt", "yuvj420p", "-q:v", "4", "pipe:1",
+        ]
+
+    async def _read_camera_stderr(self, process, source):
+        try:
+            while process and process.stderr:
+                line = await process.stderr.readline()
+                if not line:
+                    break
+                text = line.decode(errors="replace").strip()
+                if text:
+                    self._camera_stderr[source].append(text[:500])
+        except asyncio.CancelledError:
+            pass
 
     async def _read_camera_frames(self):
         buffer = bytearray()
@@ -964,8 +1158,8 @@ class MeoofRuntimeClient:
                         self._camera_frame = frame
                         self._camera_sequence += 1
                         self._camera_condition.notify_all()
-        finally:
-            self._camera_frame = None
+        except asyncio.CancelledError:
+            pass
 
     async def wait_camera_frame(self, sequence, timeout=10):
         await self.start_camera()
@@ -988,7 +1182,16 @@ class MeoofRuntimeClient:
                     await asyncio.wait_for(process.wait(), 5)
                 except asyncio.TimeoutError:
                     process.kill()
+                    await process.wait()
         if self._camera_reader_task:
             self._camera_reader_task.cancel()
+        for task in self._camera_stderr_tasks:
+            if not task.done():
+                task.cancel()
+        if self._camera_stderr_tasks:
+            await asyncio.gather(*self._camera_stderr_tasks,
+                                 return_exceptions=True)
+        self._camera_stderr_tasks = []
         self._camera_process = self._ffmpeg_process = self._camera_reader_task = None
+        self._camera_frame = None
         self._camera_active = False

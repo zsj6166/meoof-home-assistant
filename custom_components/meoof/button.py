@@ -29,7 +29,8 @@ class MeoofSmartFeedTestButton(MeoofEntity, ButtonEntity):
             await self.coordinator.client.test_smart_feed_check()
             await self.coordinator.async_request_refresh()
         except Exception as exc:
-            raise HomeAssistantError(f"余粮识别测试失败: {type(exc).__name__}") from exc
+            detail = str(exc).strip() or type(exc).__name__
+            raise HomeAssistantError(f"余粮识别测试失败: {detail}") from exc
 
 
 class MeoofClassifyPendingButton(MeoofEntity, ButtonEntity):
