@@ -1,10 +1,13 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-rc.2
 
 - Register bundled Lovelace cards during integration setup, before config-entry
   refreshes can delay frontend initialization and cause intermittent
   “configuration error” cards on dashboard startup.
+- Rebuild a stalled smart-feed camera pipeline once, use a recent recorded cover
+  as a bounded fallback, and report the camera stage clearly after repeated
+  timeouts.
 
 ## 1.0.0-rc.1
 

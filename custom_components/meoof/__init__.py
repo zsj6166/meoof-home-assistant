@@ -14,7 +14,7 @@ from .coordinator import MeoofCoordinator
 from .runtime_client import MeoofRuntimeClient
 
 
-FRONTEND_URL = "/meoof_static/meoof-card.js?v=1.0.0-rc.1-2"
+FRONTEND_URL = "/meoof_static/meoof-card.js?v=1.0.0-rc.2"
 
 
 async def _async_register_frontend(hass: HomeAssistant) -> None:
