@@ -14,6 +14,29 @@ from .coordinator import MeoofCoordinator
 from .runtime_client import MeoofRuntimeClient
 
 
+FRONTEND_URL = "/meoof_static/meoof-card.js?v=1.0.0-rc.1-2"
+
+
+async def _async_register_frontend(hass: HomeAssistant) -> None:
+    """Register bundled Lovelace cards before config entries start refreshing."""
+    domain_data = hass.data.setdefault(DOMAIN, {})
+    if domain_data.get("frontend_registered"):
+        return
+
+    frontend_path = pathlib.Path(__file__).parent / "frontend"
+    await hass.http.async_register_static_paths([
+        StaticPathConfig("/meoof_static", str(frontend_path), False)
+    ])
+    add_extra_js_url(hass, FRONTEND_URL)
+    domain_data["frontend_registered"] = True
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up integration-level resources before config entry setup can block."""
+    await _async_register_frontend(hass)
+    return True
+
+
 async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
 
@@ -152,13 +175,9 @@ class MeoofManageView(HomeAssistantView):
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     domain_data = hass.data.setdefault(DOMAIN, {})
-    if not domain_data.get("frontend_registered"):
-        frontend_path = pathlib.Path(__file__).parent / "frontend"
-        await hass.http.async_register_static_paths([
-            StaticPathConfig("/meoof_static", str(frontend_path), False)
-        ])
-        add_extra_js_url(hass, "/meoof_static/meoof-card.js?v=0.9.2-1")
-        domain_data["frontend_registered"] = True
+    # Keep this idempotent fallback for config-entry reloads and test harnesses
+    # that call async_setup_entry directly without running async_setup first.
+    await _async_register_frontend(hass)
     if not domain_data.get("snapshot_view_registered"):
         hass.http.register_view(MeoofEatingSnapshotView)
         hass.http.register_view(MeoofProfileImageView)

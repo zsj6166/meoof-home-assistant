@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Register bundled Lovelace cards during integration setup, before config-entry
+  refreshes can delay frontend initialization and cause intermittent
+  “configuration error” cards on dashboard startup.
+
 ## 1.0.0-rc.1
 
 - Replace the Android/QEMU/vendor-SDK compatibility bundle with a source-built,
